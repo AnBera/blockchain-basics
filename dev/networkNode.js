@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const Blockchain = require('./blockchain');
 const uuid = require('uuid/v1');
 const port = process.argv[2];
+const rp = require('request-promise');
 
 const nodeAddress = uuid().split('-').join('');
 
@@ -41,6 +42,57 @@ app.get('/mine', function (req, res) {
     });
 });
 
+app.post('/register-and-broadcast-node', function(req, res){
+    const newNodeUrl = req.body.newNodeUrl;
+    //register the new node in the current node
+    if(bitcoin.networkNodes.indexOf(newNodeUrl) === -1) {
+        bitcoin.networkNodes.push(newNodeUrl);
+    }
+    
+    const regNodesPromises = [];
+    //broadcast logic
+    bitcoin.networkNodes.forEach(networkNodeUrl => {
+        //hit register node of each n/w node
+        const requestOptions = {
+            uri: networkNodeUrl + '/register-node',
+            method: 'POST',
+            body: { newNodeUrl : newNodeUrl},
+            json: true
+        };
+
+        regNodesPromises.push(rp(requestOptions));
+    });
+
+    Promise.all(regNodesPromises)
+    .then(data => {
+        const bulkRegisterOptions = {
+            uri: newNodeUrl + '/register-node-bulk',
+            method: 'POST',
+            body: { allNetworkNodes: [...bitcoin.networkNodes, bitcoin.currentNodeUrl]},
+            json: true            
+        };
+
+        return rp(bulkRegisterOptions);
+    })
+    .then(data => {
+        res.json({note: 'New Node Registerd with Network Successfully!'});
+    })
+});
+
+app.post('/register-node', function(req, res){
+    const newNodeUrl = req.body.newNodeUrl;
+    const nodeNotAlreadyPresent = bitcoin.networkNodes.indexOf(newNodeUrl) === -1;
+    const notCurrentNode = bitcoin.currentNodeUrl !== newNodeUrl;
+    if(nodeNotAlreadyPresent && notCurrentNode) {
+        bitcoin.networkNodes.push(newNodeUrl);
+    }
+    
+    res.json({ note: 'New Node registered successfully!'});
+});
+
+app.post('/register-node-bulk', function(req, res){
+    
+});
 
 app.listen(port, function(){
     console.log(`Listening on port ${port}...`);
